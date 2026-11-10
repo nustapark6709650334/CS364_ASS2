@@ -1,19 +1,153 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".MainActivity">
+    android:fillViewport="true">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Hello World!"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        android:orientation="vertical"
+        android:padding="24dp">
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+        <!-- App Title -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Activity Tracker"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Current Session -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="CURRENT SESSION"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:id="@+id/tvSteps"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Steps: 0"
+            android:textSize="24sp"
+            android:padding="8dp" />
+
+        <TextView
+            android:id="@+id/tvShakes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Shakes: 0"
+            android:textSize="24sp"
+            android:padding="8dp" />
+
+        <TextView
+            android:id="@+id/tvDuration"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Duration: 00:00"
+            android:textSize="18sp"
+            android:padding="8dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#CCCCCC"
+            android:layout_marginVertical="16dp" />
+
+        <!-- Average Statistics -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="AVERAGE STATISTICS"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:id="@+id/tvStepsPerMinute"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Steps/min: 0"
+            android:textSize="18sp"
+            android:padding="8dp" />
+
+        <TextView
+            android:id="@+id/tvShakesPerMinute"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Shakes/min: 0"
+            android:textSize="18sp"
+            android:padding="8dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#CCCCCC"
+            android:layout_marginVertical="16dp" />
+
+        <!-- History and Records -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="HISTORY &amp; RECORDS"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:id="@+id/tvTotalHistory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ยอดสะสมจากประวัติ 0 ก้าว • เขย่า 0 ครั้ง"
+            android:textSize="16sp"
+            android:padding="8dp" />
+
+        <TextView
+            android:id="@+id/tvNewStepRecord"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:textColor="#2E7D32"
+            android:padding="8dp" />
+
+        <TextView
+            android:id="@+id/tvNewShakeRecord"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:textColor="#2E7D32"
+            android:padding="8dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#CCCCCC"
+            android:layout_marginVertical="16dp" />
+
+        <!-- Session Controls -->
+        <Button
+            android:id="@+id/btnStartSession"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Start Session" />
+
+        <Button
+            android:id="@+id/btnStopSession"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Stop Session"
+            android:layout_marginTop="8dp" />
+
+    </LinearLayout>
+
+</ScrollView>

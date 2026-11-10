@@ -1,43 +1,109 @@
 package com.example.ass2;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * MainActivity: จัดการหน้าจอหลัก, เซนเซอร์ (Issue #2), ฐานข้อมูล SQLite (Issue #3)
- * และการเชื่อมโยงข้อมูลกับ RecyclerView (Issue #4)
+ * MainActivity: จัดการระบบตรวจจับเซนเซอร์ (Sensor 50% — Issue #2),
+ * ฐานข้อมูล SQLite (SQLite 30% — Issue #3) และการเตรียมข้อมูลสำหรับ RecyclerView (20% — Issue #4)
  *
- * ส่วนการทำงานสำหรับ Issue #3 (SQLite 30%):
- * - ข้อ 6 Insert Session: บันทึกข้อมูลกิจกรรมแต่ละรอบลง SQLite
- * - ข้อ 7 Query & Persistence: โหลดประวัติกิจกรรมทั้งหมดเมื่อเปิดแอป และคงอยู่ถาวร
- * - ข้อ 8 Delete & Recalculate: ลบประวัติกิจกรรม และคำนวณยอดสะสม/สถิติสูงสุดใหม่
+ * รายการ Checklist ที่ครอบคลุม:
+ * - ข้อ 1 Step Counter Sensor: ใช้งาน Sensor.TYPE_STEP_COUNTER และขอ Permission ACTIVITY_RECOGNITION
+ * - ข้อ 2 Shake Detection: ใช้ Accelerometer ตรวจจับแรงสั่นสะเทือน พร้อม Threshold และ Cooldown
+ * - ข้อ 3 Session Delta: คำนวณเฉพาะจำนวนก้าวและครั้งที่เขย่าที่เกิดขึ้นใหม่ในเซสชันนั้น
+ * - ข้อ 4 Duration & Average: แสดงเวลา MM:SS และคำนวณอัตราเฉลี่ยก้าว/นาที, เขย่า/นาที
+ * - ข้อ 5 Total & New Record: แสดงยอดสะสมจากประวัติ และป้าย NEW STEP RECORD / NEW SHAKE RECORD
+ * - ข้อ 6 Insert Session: บันทึกข้อมูลกิจกรรมลง SQLite (DBHelper)
+ * - ข้อ 7 Query & Persistence: ดึงข้อมูลประวัติกิจกรรมทั้งหมด และคงอยู่ถาวร
+ * - ข้อ 8 Delete & Recalculate: ลบรายการกิจกรรม และคำนวณยอดสะสมรวม/สถิติสูงสุดใหม่ถูกต้อง
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
     private static final String TAG = "MainActivity";
+    private static final int REQUEST_ACTIVITY_RECOGNITION = 1001;
 
-    // จัดการฐานข้อมูล SQLite (Issue #3)
+    // Shake detection settings (ข้อ 2)
+    private static final float SHAKE_THRESHOLD = 12.0f;
+    private static final long SHAKE_COOLDOWN_MS = 500;
+
+    // Sensors
+    private SensorManager sensorManager;
+    private Sensor stepCounterSensor;
+    private Sensor accelerometerSensor;
+
+    private boolean stepSensorRegistered = false;
+    private boolean accelerometerRegistered = false;
+
+    // SQLite Database (Issue #3)
     private DBHelper dbHelper;
     private final List<DBHelper.ActivityRecord> activityList = new ArrayList<>();
 
-    // ข้อมูลเซสชันกิจกรรมปัจจุบัน (Current Session) ที่ได้จากเซนเซอร์ (Issue #2)
-    private int currentSessionSteps = 0;
-    private int currentSessionShakes = 0;
-    private int currentSessionDurationSeconds = 0;
-    private double currentSessionStepPace = 0.0;
-    private double currentSessionShakePace = 0.0;
+    // UI Components
+    private TextView tvSteps;
+    private TextView tvShakes;
+    private TextView tvDuration;
+    private TextView tvStepsPerMinute;
+    private TextView tvShakesPerMinute;
+
+    private TextView tvTotalHistory;
+    private TextView tvNewStepRecord;
+    private TextView tvNewShakeRecord;
+
+    private Button btnStartSession;
+    private Button btnStopSession;
+
+    // Session state (ข้อ 3)
+    private boolean isSessionRunning = false;
+    private int latestTotalSteps = -1;
+    private int sessionStartStepCount = -1;
+
+    private int sessionSteps = 0;
+    private int sessionShakes = 0;
+
+    private long sessionStartTime = 0;
+    private long sessionDuration = 0;
+    private long lastShakeTime = 0;
+
+    private double currentStepPace = 0.0;
+    private double currentShakePace = 0.0;
+
+    // Timer (ข้อ 4)
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable timerRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isSessionRunning) {
+                updateDurationDisplay();
+                handler.postDelayed(this, 1000);
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,6 +111,7 @@ public class MainActivity extends AppCompatActivity {
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
 
+        // System bar insets
         View mainView = findViewById(R.id.main);
         if (mainView != null) {
             ViewCompat.setOnApplyWindowInsetsListener(mainView, (v, insets) -> {
@@ -54,143 +121,311 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
+        // เชื่อมโยง UI Components
+        initViews();
+
         // เริ่มต้นใช้งานฐานข้อมูล SQLite (Issue #3)
         initDatabase();
 
-        // เชื่อมโยงปุ่มบันทึกกิจกรรม (หากมีใน Layout)
-        setupSaveButtonListener();
+        // เริ่มต้นใช้งานเซนเซอร์ (Issue #2)
+        initSensors();
 
-        // โหลดข้อมูลประวัติกิจกรรมเดิมจาก SQLite (ข้อ 7 Query & Persistence)
+        // อัปเดตยอดสะสมจากประวัติเดิม (ข้อ 5 & ข้อ 7)
         loadActivityHistory();
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        // โหลดข้อมูลใหม่เพื่อให้สอดคล้องกับสถานะล่าสุดเสมอ
-        loadActivityHistory();
-    }
+    private void initViews() {
+        tvSteps = findViewById(R.id.tvSteps);
+        tvShakes = findViewById(R.id.tvShakes);
+        tvDuration = findViewById(R.id.tvDuration);
+        tvStepsPerMinute = findViewById(R.id.tvStepsPerMinute);
+        tvShakesPerMinute = findViewById(R.id.tvShakesPerMinute);
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (dbHelper != null) {
-            dbHelper.close();
+        tvTotalHistory = findViewById(R.id.tvTotalHistory);
+        tvNewStepRecord = findViewById(R.id.tvNewStepRecord);
+        tvNewShakeRecord = findViewById(R.id.tvNewShakeRecord);
+
+        btnStartSession = findViewById(R.id.btnStartSession);
+        btnStopSession = findViewById(R.id.btnStopSession);
+
+        if (btnStartSession != null) {
+            btnStartSession.setOnClickListener(v -> startSession());
+        }
+        if (btnStopSession != null) {
+            btnStopSession.setOnClickListener(v -> stopSession());
+            btnStopSession.setEnabled(false);
         }
     }
 
-    /**
-     * กำหนดค่าเริ่มต้นให้กับ DBHelper
-     */
     private void initDatabase() {
         dbHelper = new DBHelper(this);
     }
 
-    /**
-     * ดึง DBHelper สำหรับเรียกใช้งานจากภายนอกหรือคลาสอื่น
-     */
-    public DBHelper getDbHelper() {
-        if (dbHelper == null) {
-            dbHelper = new DBHelper(this);
+    private void initSensors() {
+        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+
+        if (sensorManager != null) {
+            stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
+            accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         }
-        return dbHelper;
-    }
 
-    /**
-     * ดึงรายการประวัติกิจกรรมปัจจุบันที่โหลดขึ้นมาในหน่วยความจำ
-     */
-    public List<DBHelper.ActivityRecord> getActivityList() {
-        return activityList;
+        checkAndRequestActivityRecognitionPermission();
     }
 
     // =========================================================================
-    // ข้อ 7: Query & Persistence (ดึงประวัติกิจกรรม และคำนวณยอดสะสม)
+    // Permission Management (ข้อ 1)
     // =========================================================================
 
-    /**
-     * ดึงข้อมูลประวัติกิจกรรมทั้งหมดจากฐานข้อมูล SQLite และอัปเดตหน้าจอ
-     */
-    public void loadActivityHistory() {
-        if (dbHelper == null) {
+    private boolean hasActivityRecognitionPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.ACTIVITY_RECOGNITION
+            ) == PackageManager.PERMISSION_GRANTED;
+        }
+        return true;
+    }
+
+    private void checkAndRequestActivityRecognitionPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (!hasActivityRecognitionPermission()) {
+                requestPermissions(
+                        new String[]{Manifest.permission.ACTIVITY_RECOGNITION},
+                        REQUEST_ACTIVITY_RECOGNITION
+                );
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (requestCode == REQUEST_ACTIVITY_RECOGNITION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                registerStepSensor();
+            } else {
+                if (tvSteps != null) {
+                    tvSteps.setText("Activity Recognition permission denied");
+                }
+                Toast.makeText(this, "ต้องอนุญาต Permission เพื่อนับก้าวเดิน", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private void registerStepSensor() {
+        if (sensorManager == null || stepCounterSensor == null || stepSensorRegistered) {
             return;
         }
 
-        activityList.clear();
-        activityList.addAll(dbHelper.getAllActivities());
-
-        Log.d(TAG, "โหลดประวัติกิจกรรมแล้ว: " + activityList.size() + " รายการ");
-        Log.d(TAG, dbHelper.getTotalSummaryText());
-
-        // อัปเดตยอดสะสมจากประวัติบน UI (ถ้ามี TextView ที่เกี่ยวข้อง)
-        updateTotalSummaryUI();
-    }
-
-    /**
-     * อัปเดตข้อความยอดสะสมบน UI หากมี View ที่ตรงกับ ID
-     */
-    private void updateTotalSummaryUI() {
-        if (dbHelper == null) return;
-
-        int summaryId = getResources().getIdentifier("tvTotalSummary", "id", getPackageName());
-        if (summaryId == 0) {
-            summaryId = getResources().getIdentifier("tv_total_summary", "id", getPackageName());
-        }
-
-        if (summaryId != 0) {
-            TextView tvSummary = findViewById(summaryId);
-            if (tvSummary != null) {
-                tvSummary.setText(dbHelper.getTotalSummaryText());
-            }
-        }
-    }
-
-    // =========================================================================
-    // ข้อ 6: Insert Session (บันทึกกิจกรรมลง SQLite)
-    // =========================================================================
-
-    /**
-     * ผูก Event ให้กับปุ่ม "บันทึกกิจกรรม" (รองรับชื่อ ID ทั้ง camelCase และ snake_case)
-     */
-    private void setupSaveButtonListener() {
-        int saveBtnId = getResources().getIdentifier("btnSaveActivity", "id", getPackageName());
-        if (saveBtnId == 0) {
-            saveBtnId = getResources().getIdentifier("btn_save_activity", "id", getPackageName());
-        }
-        if (saveBtnId == 0) {
-            saveBtnId = getResources().getIdentifier("btnSave", "id", getPackageName());
-        }
-
-        if (saveBtnId != 0) {
-            View saveBtn = findViewById(saveBtnId);
-            if (saveBtn != null) {
-                saveBtn.setOnClickListener(this::onSaveActivityClicked);
-            }
-        }
-    }
-
-    /**
-     * เมธอดเรียกเมื่อกดปุ่ม "บันทึกกิจกรรม" (สามารถใช้ผ่าน android:onClick="onSaveActivityClicked" ได้ด้วย)
-     */
-    public void onSaveActivityClicked(View view) {
-        saveCurrentSession(
-                currentSessionSteps,
-                currentSessionShakes,
-                currentSessionDurationSeconds,
-                currentSessionStepPace,
-                currentSessionShakePace
+        stepSensorRegistered = sensorManager.registerListener(
+                this,
+                stepCounterSensor,
+                SensorManager.SENSOR_DELAY_UI
         );
+
+        if (!stepSensorRegistered && tvSteps != null) {
+            tvSteps.setText("Unable to register Step Counter");
+        }
     }
 
-    /**
-     * บันทึกข้อมูลกิจกรรมของรอบปัจจุบันลงฐานข้อมูล SQLite
-     *
-     * @param steps           จำนวนก้าวในรอบปัจจุบัน
-     * @param shakes          จำนวนเขย่าในรอบปัจจุบัน
-     * @param durationSeconds ระยะเวลาทำกิจกรรม (วินาที)
-     * @param stepPace        ค่าเฉลี่ยก้าวต่อนาที
-     * @param shakePace       ค่าเฉลี่ยเขย่าต่อนาที
-     * @return DBHelper.ActivityRecord ที่บันทึกสำเร็จ
-     */
+    private void registerAccelerometer() {
+        if (sensorManager == null || accelerometerSensor == null || accelerometerRegistered) {
+            return;
+        }
+
+        accelerometerRegistered = sensorManager.registerListener(
+                this,
+                accelerometerSensor,
+                SensorManager.SENSOR_DELAY_UI
+        );
+
+        if (!accelerometerRegistered && tvShakes != null) {
+            tvShakes.setText("Unable to register Accelerometer");
+        }
+    }
+
+    // =========================================================================
+    // Session Management (ข้อ 3, 4, 5, 6)
+    // =========================================================================
+
+    public void startSession() {
+        // รีเซ็ตค่าในรอบกิจกรรมใหม่ (ข้อ 3 Session Delta)
+        sessionSteps = 0;
+        sessionShakes = 0;
+        sessionDuration = 0;
+        lastShakeTime = 0;
+        currentStepPace = 0.0;
+        currentShakePace = 0.0;
+
+        // บันทึกค่าเริ่มต้นของเซนเซอร์ก้าวเป็น Baseline
+        sessionStartStepCount = latestTotalSteps;
+
+        // เริ่มจับเวลา (ข้อ 4)
+        sessionStartTime = SystemClock.elapsedRealtime();
+        isSessionRunning = true;
+
+        // อัปเดต UI เริ่มต้น
+        if (tvSteps != null) tvSteps.setText("Steps: 0");
+        if (tvShakes != null) tvShakes.setText("Shakes: 0");
+        if (tvDuration != null) tvDuration.setText("Duration: 00:00");
+        if (tvStepsPerMinute != null) tvStepsPerMinute.setText("Steps/min: 0");
+        if (tvShakesPerMinute != null) tvShakesPerMinute.setText("Shakes/min: 0");
+
+        if (tvNewStepRecord != null) tvNewStepRecord.setText("");
+        if (tvNewShakeRecord != null) tvNewShakeRecord.setText("");
+
+        if (btnStartSession != null) btnStartSession.setEnabled(false);
+        if (btnStopSession != null) btnStopSession.setEnabled(true);
+
+        handler.removeCallbacks(timerRunnable);
+        handler.post(timerRunnable);
+    }
+
+    public void stopSession() {
+        if (!isSessionRunning) {
+            return;
+        }
+
+        isSessionRunning = false;
+        handler.removeCallbacks(timerRunnable);
+
+        // คำนวณระยะเวลาทั้งหมดในเซสชัน
+        sessionDuration = SystemClock.elapsedRealtime() - sessionStartTime;
+        updateDurationDisplay();
+
+        // คำนวณค่าเฉลี่ยก้าวต่อนาทีและเขย่าต่อนาที (ข้อ 4)
+        double durationMinutes = sessionDuration / 60000.0;
+        if (durationMinutes > 0) {
+            currentStepPace = sessionSteps / durationMinutes;
+            currentShakePace = sessionShakes / durationMinutes;
+        } else {
+            currentStepPace = 0.0;
+            currentShakePace = 0.0;
+        }
+
+        if (tvStepsPerMinute != null) {
+            tvStepsPerMinute.setText(String.format(Locale.getDefault(), "Steps/min: %.2f", currentStepPace));
+        }
+        if (tvShakesPerMinute != null) {
+            tvShakesPerMinute.setText(String.format(Locale.getDefault(), "Shakes/min: %.2f", currentShakePace));
+        }
+
+        // บันทึกลง SQLite (DBHelper) และตรวจสอบสถิติใหม่ (ข้อ 5, ข้อ 6)
+        saveSessionAndCheckRecords();
+
+        if (btnStartSession != null) btnStartSession.setEnabled(true);
+        if (btnStopSession != null) btnStopSession.setEnabled(false);
+    }
+
+    private void updateDurationDisplay() {
+        long elapsed;
+        if (isSessionRunning) {
+            elapsed = SystemClock.elapsedRealtime() - sessionStartTime;
+        } else {
+            elapsed = sessionDuration;
+        }
+
+        long totalSeconds = elapsed / 1000;
+        long minutes = totalSeconds / 60;
+        long seconds = totalSeconds % 60;
+
+        if (tvDuration != null) {
+            tvDuration.setText(String.format(Locale.getDefault(), "Duration: %02d:%02d", minutes, seconds));
+        }
+    }
+
+    private void saveSessionAndCheckRecords() {
+        if (dbHelper == null) {
+            dbHelper = new DBHelper(this);
+        }
+
+        // ตรวจสอบสถิติสูงสุดเดิมก่อนบันทึก (ข้อ 5)
+        int previousHighestSteps = dbHelper.getMaxSteps();
+        int previousHighestShakes = dbHelper.getMaxShakes();
+
+        int durationSeconds = (int) (sessionDuration / 1000);
+        long minutes = durationSeconds / 60;
+        long seconds = durationSeconds % 60;
+        String formattedDuration = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds);
+
+        DBHelper.ActivityRecord record = new DBHelper.ActivityRecord();
+        record.setSteps(sessionSteps);
+        record.setShakes(sessionShakes);
+        record.setDurationSeconds(durationSeconds);
+        record.setDurationFormatted(formattedDuration);
+        record.setStepPace(currentStepPace);
+        record.setShakePace(currentShakePace);
+
+        long id = dbHelper.insertActivity(record);
+        if (id == -1) {
+            Toast.makeText(this, "เกิดข้อผิดพลาดในการบันทึกกิจกรรม", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // แสดงป้าย NEW RECORD หากทำลายสถิติเดิม (ข้อ 5)
+        boolean isNewStepRecord = sessionSteps > previousHighestSteps && sessionSteps > 0;
+        boolean isNewShakeRecord = sessionShakes > previousHighestShakes && sessionShakes > 0;
+
+        if (isNewStepRecord && tvNewStepRecord != null) {
+            tvNewStepRecord.setText("NEW STEP RECORD");
+        } else if (tvNewStepRecord != null) {
+            tvNewStepRecord.setText("");
+        }
+
+        if (isNewShakeRecord && tvNewShakeRecord != null) {
+            tvNewShakeRecord.setText("NEW SHAKE RECORD");
+        } else if (tvNewShakeRecord != null) {
+            tvNewShakeRecord.setText("");
+        }
+
+        // โหลดข้อมูลและอัปเดตยอดสะสมจากประวัติใหม่ (ข้อ 5 & ข้อ 7)
+        loadActivityHistory();
+
+        Toast.makeText(this, "บันทึกกิจกรรมเรียบร้อยแล้ว (" + sessionSteps + " ก้าว)", Toast.LENGTH_SHORT).show();
+    }
+
+    // =========================================================================
+    // SQLite Persistence & Management (ข้อ 7 & ข้อ 8)
+    // =========================================================================
+
+    public void loadActivityHistory() {
+        if (dbHelper == null) {
+            dbHelper = new DBHelper(this);
+        }
+
+        List<DBHelper.ActivityRecord> records = dbHelper.getAllActivities();
+        activityList.clear();
+        activityList.addAll(records);
+
+        updateTotalHistory();
+    }
+
+    public void updateTotalHistory() {
+        if (dbHelper == null) {
+            dbHelper = new DBHelper(this);
+        }
+
+        String summary = dbHelper.getTotalSummaryText();
+        if (tvTotalHistory != null) {
+            tvTotalHistory.setText(summary);
+        }
+    }
+
+    public boolean deleteActivityRecord(long id) {
+        if (dbHelper == null) {
+            dbHelper = new DBHelper(this);
+        }
+
+        int affected = dbHelper.deleteActivity(id);
+        if (affected > 0) {
+            loadActivityHistory();
+            Toast.makeText(this, "ลบประวัติกิจกรรมเรียบร้อยแล้ว", Toast.LENGTH_SHORT).show();
+            return true;
+        }
+        return false;
+    }
+
     public DBHelper.ActivityRecord saveCurrentSession(int steps, int shakes, int durationSeconds,
                                                      double stepPace, double shakePace) {
         if (dbHelper == null) {
@@ -206,69 +441,153 @@ public class MainActivity extends AppCompatActivity {
 
         long id = dbHelper.insertActivity(record);
         if (id != -1) {
-            Toast.makeText(this, "บันทึกกิจกรรมเรียบร้อยแล้ว (" + steps + " ก้าว)", Toast.LENGTH_SHORT).show();
-            // โหลดและอัปเดตสถิติสะสมใหม่ทันที
             loadActivityHistory();
-        } else {
-            Toast.makeText(this, "เกิดข้อผิดพลาดในการบันทึกข้อมูล", Toast.LENGTH_SHORT).show();
         }
-
         return record;
     }
 
-    // =========================================================================
-    // ข้อ 8: Delete & Recalculate (ลบประวัติ และคำนวณยอดสะสม/สถิติสูงสุดใหม่)
-    // =========================================================================
-
-    /**
-     * ลบรายการกิจกรรมตาม ID และคำนวณยอดสะสม/สถิติ New Record ใหม่
-     *
-     * @param id รหัสรายการที่จะลบ
-     * @return true หากลบสำเร็จ
-     */
-    public boolean deleteActivityRecord(long id) {
+    public DBHelper getDbHelper() {
         if (dbHelper == null) {
             dbHelper = new DBHelper(this);
         }
+        return dbHelper;
+    }
 
-        int affected = dbHelper.deleteActivity(id);
-        if (affected > 0) {
-            Toast.makeText(this, "ลบประวัติกิจกรรมเรียบร้อยแล้ว", Toast.LENGTH_SHORT).show();
-            // โหลดประวัติใหม่พร้อมอัปเดตสถิติและ New Record ทันที
-            loadActivityHistory();
-            return true;
+    public List<DBHelper.ActivityRecord> getActivityList() {
+        return activityList;
+    }
+
+    // =========================================================================
+    // Sensor Event Callbacks (ข้อ 1 & ข้อ 2)
+    // =========================================================================
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event == null || event.sensor == null) {
+            return;
         }
-        return false;
+
+        // ข้อ 1: Step Counter Sensor
+        if (event.sensor.getType() == Sensor.TYPE_STEP_COUNTER) {
+            latestTotalSteps = (int) event.values[0];
+
+            if (isSessionRunning) {
+                // กำหนด Baseline เมื่อเพิ่งเริ่มกิจกรรมหรือได้รับค่าครั้งแรก
+                if (sessionStartStepCount == -1) {
+                    sessionStartStepCount = latestTotalSteps;
+                }
+
+                // ข้อ 3: Session Delta (นับเฉพาะก้าวใหม่ในรอบนี้)
+                sessionSteps = Math.max(0, latestTotalSteps - sessionStartStepCount);
+
+                if (tvSteps != null) {
+                    tvSteps.setText("Steps: " + sessionSteps);
+                }
+            }
+        }
+        // ข้อ 2: Shake Detection (Accelerometer)
+        else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            if (!isSessionRunning) {
+                return;
+            }
+
+            float x = event.values[0];
+            float y = event.values[1];
+            float z = event.values[2];
+
+            // คำนวณ Magnitude
+            double magnitude = Math.sqrt(x * x + y * y + z * z);
+
+            // หักลบค่าแรงโน้มถ่วงของโลก
+            double dynamicAcceleration = Math.abs(magnitude - SensorManager.GRAVITY_EARTH);
+
+            long currentTime = SystemClock.elapsedRealtime();
+
+            // ตรวจจับการเขย่าด้วย Threshold และ Cooldown ป้องกันการนับเบิ้ล
+            if (dynamicAcceleration > SHAKE_THRESHOLD && currentTime - lastShakeTime >= SHAKE_COOLDOWN_MS) {
+                sessionShakes++;
+                lastShakeTime = currentTime;
+
+                if (tvShakes != null) {
+                    tvShakes.setText("Shakes: " + sessionShakes);
+                }
+            }
+        }
     }
 
-    /**
-     * อัปเดตข้อมูลเซสชันปัจจุบันจากระบบ Sensor (เตรียมไว้สำหรับ Issue #2 เรียกใช้)
-     */
-    public void setCurrentSessionData(int steps, int shakes, int durationSeconds, double stepPace, double shakePace) {
-        this.currentSessionSteps = steps;
-        this.currentSessionShakes = shakes;
-        this.currentSessionDurationSeconds = durationSeconds;
-        this.currentSessionStepPace = stepPace;
-        this.currentSessionShakePace = shakePace;
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        // ไม่จำเป็นต้องใช้งาน
     }
+
+    // =========================================================================
+    // Activity Lifecycle
+    // =========================================================================
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        if (hasActivityRecognitionPermission()) {
+            registerStepSensor();
+        }
+        registerAccelerometer();
+
+        loadActivityHistory();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+
+        if (sensorManager != null) {
+            if (stepSensorRegistered) {
+                sensorManager.unregisterListener(this, stepCounterSensor);
+                stepSensorRegistered = false;
+            }
+            if (accelerometerRegistered) {
+                sensorManager.unregisterListener(this, accelerometerSensor);
+                accelerometerRegistered = false;
+            }
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+
+        handler.removeCallbacks(timerRunnable);
+
+        if (dbHelper != null) {
+            dbHelper.close();
+        }
+    }
+
+    // =========================================================================
+    // Getter Methods สำหรับเรียกดูสถานะหรือทดสอบ
+    // =========================================================================
 
     public int getCurrentSessionSteps() {
-        return currentSessionSteps;
+        return sessionSteps;
     }
 
     public int getCurrentSessionShakes() {
-        return currentSessionShakes;
+        return sessionShakes;
     }
 
     public int getCurrentSessionDurationSeconds() {
-        return currentSessionDurationSeconds;
+        return (int) (sessionDuration / 1000);
     }
 
     public double getCurrentSessionStepPace() {
-        return currentSessionStepPace;
+        return currentStepPace;
     }
 
     public double getCurrentSessionShakePace() {
-        return currentSessionShakePace;
+        return currentShakePace;
+    }
+
+    public boolean isSessionRunning() {
+        return isSessionRunning;
     }
 }
