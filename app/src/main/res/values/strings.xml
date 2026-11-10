@@ -1,3 +1,13 @@
 <resources>
     <string name="app_name">ASS2</string>
+    <string name="history_title">ประวัติกิจกรรม</string>
+    <string name="history_empty">ยังไม่มีประวัติกิจกรรม</string>
+    <string name="history_summary">%1$d ก้าว • เขย่า %2$d ครั้ง\nเวลา %3$s • %4$.1f steps/min</string>
+    <string name="history_detail_title">รายละเอียดกิจกรรม</string>
+    <string name="history_detail">%1$s\n\nจำนวนก้าว: %2$d\nจำนวนเขย่า: %3$d\nระยะเวลา: %4$s\nเฉลี่ย: %5$.1f steps/min\nเฉลี่ย: %6$.1f shakes/min\n</string>
+    <string name="new_step_record">NEW STEP RECORD</string>
+    <string name="new_shake_record">NEW SHAKE RECORD</string>
+    <string name="close_detail">ปิด</string>
+    <string name="delete_activity">ลบกิจกรรม</string>
+    <string name="delete_failed">ลบกิจกรรมไม่สำเร็จ กรุณาลองอีกครั้ง</string>
 </resources>
