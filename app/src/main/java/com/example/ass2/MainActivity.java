@@ -1,4 +1,3 @@
-
 package com.example.ass2;
 
 import android.Manifest;
@@ -14,6 +13,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
@@ -40,12 +40,19 @@ public class MainActivity extends AppCompatActivity
     private boolean stepSensorRegistered = false;
     private boolean accelerometerRegistered = false;
 
+    // Database
+    private DatabaseHelper databaseHelper;
+
     // UI
     private TextView tvSteps;
     private TextView tvShakes;
     private TextView tvDuration;
     private TextView tvStepsPerMinute;
     private TextView tvShakesPerMinute;
+
+    private TextView tvTotalHistory;
+    private TextView tvNewStepRecord;
+    private TextView tvNewShakeRecord;
 
     private Button btnStartSession;
     private Button btnStopSession;
@@ -64,11 +71,13 @@ public class MainActivity extends AppCompatActivity
     private long lastShakeTime = 0;
 
     // Timer
-    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Handler handler =
+            new Handler(Looper.getMainLooper());
 
     private final Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
+
             if (isSessionRunning) {
                 updateDurationDisplay();
                 handler.postDelayed(this, 1000);
@@ -107,10 +116,20 @@ public class MainActivity extends AppCompatActivity
         tvStepsPerMinute = findViewById(R.id.tvStepsPerMinute);
         tvShakesPerMinute = findViewById(R.id.tvShakesPerMinute);
 
+        tvTotalHistory = findViewById(R.id.tvTotalHistory);
+        tvNewStepRecord = findViewById(R.id.tvNewStepRecord);
+        tvNewShakeRecord = findViewById(R.id.tvNewShakeRecord);
+
         btnStartSession = findViewById(R.id.btnStartSession);
         btnStopSession = findViewById(R.id.btnStopSession);
 
-        // Initialize button states
+        // Initialize database
+        databaseHelper = new DatabaseHelper(this);
+
+        // Load saved history
+        updateTotalHistory();
+
+        // Initial button states
         btnStopSession.setEnabled(false);
 
         btnStartSession.setOnClickListener(v -> startSession());
@@ -128,15 +147,13 @@ public class MainActivity extends AppCompatActivity
                 Sensor.TYPE_ACCELEROMETER);
 
         // Initial UI
-        tvSteps.setText("Steps: 0");
+        tvSteps.setText(stepCounterSensor == null
+                ? "Step Counter unavailable"
+                : "Steps: 0");
 
         tvShakes.setText(accelerometerSensor == null
                 ? "Accelerometer unavailable"
                 : "Shakes: 0");
-
-        if (stepCounterSensor == null) {
-            tvSteps.setText("Step Counter unavailable");
-        }
 
         tvDuration.setText("Duration: 00:00");
         tvStepsPerMinute.setText("Steps/min: 0");
@@ -233,7 +250,8 @@ public class MainActivity extends AppCompatActivity
                 registerStepSensor();
 
             } else {
-                tvSteps.setText("Activity Recognition permission denied");
+                tvSteps.setText(
+                        "Activity Recognition permission denied");
             }
         }
     }
@@ -247,7 +265,7 @@ public class MainActivity extends AppCompatActivity
         sessionDuration = 0;
         lastShakeTime = 0;
 
-        // Save current step count as baseline
+        // Save current device step count as baseline
         sessionStartStepCount = latestTotalSteps;
 
         // Start timer
@@ -261,6 +279,10 @@ public class MainActivity extends AppCompatActivity
         tvDuration.setText("Duration: 00:00");
         tvStepsPerMinute.setText("Steps/min: 0");
         tvShakesPerMinute.setText("Shakes/min: 0");
+
+        // Clear previous record messages
+        tvNewStepRecord.setText("");
+        tvNewShakeRecord.setText("");
 
         // Update buttons
         btnStartSession.setEnabled(false);
@@ -295,8 +317,11 @@ public class MainActivity extends AppCompatActivity
 
         if (durationMinutes > 0) {
 
-            double stepsPerMinute = sessionSteps / durationMinutes;
-            double shakesPerMinute = sessionShakes / durationMinutes;
+            double stepsPerMinute =
+                    sessionSteps / durationMinutes;
+
+            double shakesPerMinute =
+                    sessionShakes / durationMinutes;
 
             tvStepsPerMinute.setText(
                     String.format(
@@ -313,9 +338,82 @@ public class MainActivity extends AppCompatActivity
             );
         }
 
+        // Save session and check records
+        saveSessionAndCheckRecords();
+
         // Update buttons
         btnStartSession.setEnabled(true);
         btnStopSession.setEnabled(false);
+    }
+
+    // Save session to SQLite and check new records
+    private void saveSessionAndCheckRecords() {
+
+        // Get previous records BEFORE saving current session
+        int previousHighestSteps =
+                databaseHelper.getHighestSteps();
+
+        int previousHighestShakes =
+                databaseHelper.getHighestShakes();
+
+        // Check if current session breaks records
+        boolean isNewStepRecord =
+                sessionSteps > previousHighestSteps;
+
+        boolean isNewShakeRecord =
+                sessionShakes > previousHighestShakes;
+
+        // Save completed session
+        boolean saved = databaseHelper.saveSession(
+                sessionSteps,
+                sessionShakes,
+                sessionDuration / 1000
+        );
+
+        if (!saved) {
+            Toast.makeText(
+                    this,
+                    "Failed to save session",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            return;
+        }
+
+        // Display new records
+        if (isNewStepRecord && sessionSteps > 0) {
+
+            tvNewStepRecord.setText("NEW STEP RECORD");
+        }
+
+        if (isNewShakeRecord && sessionShakes > 0) {
+
+            tvNewShakeRecord.setText("NEW SHAKE RECORD");
+        }
+
+        // Refresh total history
+        updateTotalHistory();
+
+        Toast.makeText(
+                this,
+                "Session saved successfully",
+                Toast.LENGTH_SHORT
+        ).show();
+    }
+
+    // Update accumulated history from database
+    private void updateTotalHistory() {
+
+        int totalSteps = databaseHelper.getTotalSteps();
+        int totalShakes = databaseHelper.getTotalShakes();
+
+        tvTotalHistory.setText(
+                "ยอดสะสมจากประวัติ "
+                        + totalSteps
+                        + " ก้าว • เขย่า "
+                        + totalShakes
+                        + " ครั้ง"
+        );
     }
 
     // Update duration display
@@ -324,7 +422,8 @@ public class MainActivity extends AppCompatActivity
         long elapsed;
 
         if (isSessionRunning) {
-            elapsed = SystemClock.elapsedRealtime() - sessionStartTime;
+            elapsed = SystemClock.elapsedRealtime()
+                    - sessionStartTime;
         } else {
             elapsed = sessionDuration;
         }
@@ -370,7 +469,8 @@ public class MainActivity extends AppCompatActivity
         }
 
         // Accelerometer / Shake Detection
-        else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+        else if (event.sensor.getType()
+                == Sensor.TYPE_ACCELEROMETER) {
 
             if (!isSessionRunning) {
                 return;
@@ -394,18 +494,21 @@ public class MainActivity extends AppCompatActivity
 
             // Detect shake with threshold and cooldown
             if (dynamicAcceleration > SHAKE_THRESHOLD
-                    && currentTime - lastShakeTime >= SHAKE_COOLDOWN_MS) {
+                    && currentTime - lastShakeTime
+                    >= SHAKE_COOLDOWN_MS) {
 
                 sessionShakes++;
                 lastShakeTime = currentTime;
 
-                tvShakes.setText("Shakes: " + sessionShakes);
+                tvShakes.setText(
+                        "Shakes: " + sessionShakes);
             }
         }
     }
 
     @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+    public void onAccuracyChanged(
+            Sensor sensor, int accuracy) {
         // Not required
     }
 
@@ -431,12 +534,14 @@ public class MainActivity extends AppCompatActivity
             if (stepSensorRegistered) {
                 sensorManager.unregisterListener(
                         this, stepCounterSensor);
+
                 stepSensorRegistered = false;
             }
 
             if (accelerometerRegistered) {
                 sensorManager.unregisterListener(
                         this, accelerometerSensor);
+
                 accelerometerRegistered = false;
             }
         }
@@ -447,5 +552,9 @@ public class MainActivity extends AppCompatActivity
         super.onDestroy();
 
         handler.removeCallbacks(timerRunnable);
+
+        if (databaseHelper != null) {
+            databaseHelper.close();
+        }
     }
 }

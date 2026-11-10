@@ -11,6 +11,7 @@
         android:orientation="vertical"
         android:padding="24dp">
 
+        <!-- App Title -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -21,7 +22,6 @@
             android:layout_marginBottom="24dp" />
 
         <!-- Current Session -->
-
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -61,7 +61,6 @@
             android:layout_marginVertical="16dp" />
 
         <!-- Average Statistics -->
-
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -92,8 +91,50 @@
             android:background="#CCCCCC"
             android:layout_marginVertical="16dp" />
 
-        <!-- Session Controls -->
+        <!-- History and Records -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="HISTORY &amp; RECORDS"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:layout_marginBottom="12dp" />
 
+        <TextView
+            android:id="@+id/tvTotalHistory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ยอดสะสมจากประวัติ 0 ก้าว • เขย่า 0 ครั้ง"
+            android:textSize="16sp"
+            android:padding="8dp" />
+
+        <TextView
+            android:id="@+id/tvNewStepRecord"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:textColor="#2E7D32"
+            android:padding="8dp" />
+
+        <TextView
+            android:id="@+id/tvNewShakeRecord"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:textColor="#2E7D32"
+            android:padding="8dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#CCCCCC"
+            android:layout_marginVertical="16dp" />
+
+        <!-- Session Controls -->
         <Button
             android:id="@+id/btnStartSession"
             android:layout_width="match_parent"
