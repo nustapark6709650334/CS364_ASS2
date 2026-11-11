@@ -10,9 +10,9 @@
 
 | ลำดับ | ชื่อ - นามสกุล | รหัสนักศึกษา | หน้าที่ความรับผิดชอบ (Role & Scope) | Issue ที่รับผิดชอบ |
 | :---: | :--- | :---: | :--- | :---: |
-| 1 | *(ระบุชื่อ-นามสกุล)* | `6709650334` | พัฒนาระบบ Sensor นับก้าว, ตรวจจับการเขย่า, คำนวณเวลา/ค่าเฉลี่ย และสถิติสูงสุด (`MainActivity.java`) | [#2](https://github.com/nustapark6709650334/CS364_ASS2/issues/2) |
-| 2 | *(ระบุชื่อ-นามสกุล)* | *(รหัสนักศึกษา)* | พัฒนาฐานข้อมูล SQLite สำหรับบันทึก ดึงข้อมูล และลบประวัติกิจกรรม (`DBHelper.java`) | [#3](https://github.com/nustapark6709650334/CS364_ASS2/issues/3) |
-| 3 | *(ระบุชื่อ-นามสกุล)* | *(รหัสนักศึกษา)* | ออกแบบ UI, พัฒนา `RecyclerView` (`ActivityAdapter.java`), Dialog รายละเอียด และ Empty State | [#4](https://github.com/nustapark6709650334/CS364_ASS2/issues/4) |
+| 1 | บูรพา จินดาเลิศ         | 6709650441 | พัฒนาระบบ Sensor นับก้าว, ตรวจจับการเขย่า, คำนวณเวลา/ค่าเฉลี่ย และสถิติสูงสุด (`MainActivity.java`) | [#2](https://github.com/nustapark6709650334/CS364_ASS2/issues/2) |
+| 2 | กุลศิษฐ์ บัญชาพงศ์โอฬาร  | 6709650185 | พัฒนาฐานข้อมูล SQLite สำหรับบันทึก ดึงข้อมูล และลบประวัติกิจกรรม (`DBHelper.java`) | [#3](https://github.com/nustapark6709650334/CS364_ASS2/issues/3) |
+| 3 | กิติบดิณ เฮงมงคลสกุล    | 6709650169   | ออกแบบ UI, พัฒนา `RecyclerView` (`ActivityAdapter.java`), Dialog รายละเอียด และ Empty State | [#4](https://github.com/nustapark6709650334/CS364_ASS2/issues/4) |
 
 ---
 
