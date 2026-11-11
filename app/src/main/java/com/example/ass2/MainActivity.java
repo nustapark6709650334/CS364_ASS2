@@ -24,6 +24,9 @@ import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -63,6 +66,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     // SQLite Database (Issue #3)
     private DBHelper dbHelper;
     private final List<DBHelper.ActivityRecord> activityList = new ArrayList<>();
+    private ActivityAdapter historyAdapter;
 
     // UI Components
     private TextView tvSteps;
@@ -123,6 +127,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         // เชื่อมโยง UI Components
         initViews();
+        initHistoryViews();
 
         // เริ่มต้นใช้งานฐานข้อมูล SQLite (Issue #3)
         initDatabase();
@@ -159,6 +164,34 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private void initDatabase() {
         dbHelper = new DBHelper(this);
+    }
+
+    private void initHistoryViews() {
+        RecyclerView history = findViewById(R.id.history_list);
+        historyAdapter = new ActivityAdapter(this::showActivityDetails);
+        history.setLayoutManager(new LinearLayoutManager(this));
+        history.setAdapter(historyAdapter);
+    }
+
+    private void showActivityDetails(DBHelper.ActivityRecord record) {
+        View content = getLayoutInflater().inflate(R.layout.dialog_activity_detail, null);
+        TextView detail = content.findViewById(R.id.activity_detail);
+        String text = getString(R.string.history_detail, record.getTimestamp(), record.getSteps(),
+                record.getShakes(), record.getDurationFormatted(), record.getStepPace(),
+                record.getShakePace());
+        if (record.isNewStepRecord()) text += "\n" + getString(R.string.new_step_record);
+        if (record.isNewShakeRecord()) text += "\n" + getString(R.string.new_shake_record);
+        detail.setText(text);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.history_detail_title)
+                .setView(content)
+                .setNegativeButton(R.string.close_detail, null)
+                .setPositiveButton(R.string.delete_activity, (dialog, which) -> {
+                    if (!deleteActivityRecord(record.getId())) {
+                        Toast.makeText(this, R.string.delete_failed, Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
     }
 
     private void initSensors() {
@@ -397,6 +430,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         List<DBHelper.ActivityRecord> records = dbHelper.getAllActivities();
         activityList.clear();
         activityList.addAll(records);
+
+        if (historyAdapter != null) {
+            historyAdapter.submitItems(activityList);
+            findViewById(R.id.history_empty).setVisibility(records.isEmpty() ? View.VISIBLE : View.GONE);
+            findViewById(R.id.history_list).setVisibility(records.isEmpty() ? View.GONE : View.VISIBLE);
+        }
 
         updateTotalHistory();
     }
